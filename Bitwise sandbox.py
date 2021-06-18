@@ -1,6 +1,9 @@
 import turtle
 import tkinter
 from tkinter import ttk
+from threading import Thread
+from time import sleep
+
 
 turtle.register_shape("Sprites/and_gate_off.gif")
 turtle.register_shape("Sprites/and_gate_on.gif")
@@ -27,136 +30,51 @@ turtle.register_shape("Sprites/out_box_none.gif")
 
 mode = 0
 gates = []
-CreateNewWire = True
 new_wire = None
+queue = []
+
+
+def execute_queue():
+    global queue
+    lines_executed = 0
+    while True:
+        if len(queue):
+            queue[0]()
+            queue.pop(0)
+            lines_executed += 1
+            print(lines_executed)
+        sleep(0.1)
+
+
+Thread(target=execute_queue).start()
 
 
 class LogicGate:
-
-    def __init__(self, gate_type):
+    def __init__(self):
         global gates
+
         self.t = turtle.Turtle()
         self.t.penup()
         self.t.speed(-1)
         self.t.setpos(250, 250)
-        if gate_type == 1:
-            self.state = False
-        else:
-            self.state = None
+
         self.parents = []
         self.children = []
-        self.type = gate_type
+        self.state = None
         self.shape_change()
         gates.append(self)
+
         mouse_mode(mode)
+
+    def update(self, xdummy=None, ydummy=None):
+        pass
 
     def ping(self):
         for i in self.children:
-            i.update()
-
-    def update(self, xdummy=None, ydummy=None):
-        values = [i.state for i in self.parents]
-
-        def xor(pointer=0, result=0):
-            if pointer < len(values):
-                return xor(pointer + 1, values[pointer] ^ result)
-            else:
-                return result
-
-        if self.type == 1:
-            self.state = not self.state
-            self.shape_change()
-            self.ping()
-
-        if self.type == 2:
-            if len(values) == 1:
-                if values[0] is not None:
-                    self.state = not values[0]
-                else:
-                    self.state = None
-            else:
-                self.state = None
-            self.shape_change()
-            self.ping()
-
-        if self.type == 3:
-            if len(values) > 1:
-                self.state = any(values)
-            else:
-                self.state = None
-            self.shape_change()
-            self.ping()
-
-        if self.type == 4:
-            if len(values) > 1:
-                self.state = all(values)
-            else:
-                self.state = None
-            self.shape_change()
-            self.ping()
-
-        if self.type == 5:
-            if len(self.parents) == 2:
-                self.state = xor()
-            else:
-                self.state = None
-            self.shape_change()
-            self.ping()
-
-        if self.type == 6:
-            if len(self.parents) == 1:
-                self.state = values[0]
-            else:
-                self.state = None
-            self.shape_change()
-            self.ping()
+            queue.append(i.update)
 
     def shape_change(self):
-        if self.type == 1:
-            if self.state:
-                self.t.shape('Sprites/inp_box_on.gif')
-            else:
-                self.t.shape('Sprites/inp_box_off.gif')
-
-        elif self.type == 2:
-            if self.state is None:
-                self.t.shape('Sprites/not_gate_none.gif')
-            elif self.state:
-                self.t.shape('Sprites/not_gate_on.gif')
-            else:
-                self.t.shape('Sprites/not_gate_off.gif')
-
-        elif self.type == 3:
-            if self.state is None:
-                self.t.shape('Sprites/or_gate_none.gif')
-            elif self.state:
-                self.t.shape('Sprites/or_gate_on.gif')
-            else:
-                self.t.shape('Sprites/or_gate_off.gif')
-
-        elif self.type == 4:
-            if self.state is None:
-                self.t.shape('Sprites/and_gate_none.gif')
-            elif self.state:
-                self.t.shape('Sprites/and_gate_on.gif')
-            else:
-                self.t.shape('Sprites/and_gate_off.gif')
-
-        elif self.type == 5:
-            if self.state is None:
-                self.t.shape('Sprites/xor_gate_none.gif')
-            elif self.state:
-                self.t.shape('Sprites/xor_gate_on.gif')
-            else:
-                self.t.shape('Sprites/xor_gate_off.gif')
-
-        elif self.type == 6:
-            if self.state is None:
-                self.t.shape('Sprites/out_box_none.gif')
-            elif self.state:
-                self.t.shape('Sprites/out_box_on.gif')
-            else:
-                self.t.shape('Sprites/out_box_off.gif')
+        pass
 
     def delete(self, xdummy=None, ydummy=None):
         if mode == 2:
@@ -165,67 +83,251 @@ class LogicGate:
                 i.delete()
             for i in self.children:
                 i.delete()
+            gates.remove(self)
             del self
 
     def dragging(self, x, y):
         if mode == 1 and self.parents == [] and self.children == []:
-            self.t.ondrag(None)
+            self.t.ondrag(None)  # посмотреть что будет если убрать эту строку и ниже
             self.t.setheading(self.t.towards(x, y))
             self.t.goto(x, y)
             self.t.ondrag(self.dragging)
 
-    def wiring(self, x, y):
-        onmove(screen, None)
-        #print("wiring")
-        x1, y1 = new_wire.start
-        # print('old coords overwritten')
-        canvas.coords(new_wire.line, x1, y1, x, y)
-        # print('line modified')
-        onmove(screen, self.wiring)
-
-    def pin_wire(self, x, y):
+    def first_pin_wire(self, x, y):
         global new_wire
-        onmove(screen, None)
-        # print('pin_wire')
-        if new_wire is None and self.type != 6:
-            #print('creating wire')
-            new_wire = Wire()
-            if self.t.ycor() > y:
-                #print('make wire as parent')
-                self.parents.append(new_wire)
-                new_wire.child = self
-            elif y > self.t.ycor():
-                #print('make wire as child')
-                self.children.append(new_wire)
-                new_wire.parent = self
-            # print('wire created')
-            new_wire.start = x, y
-            # print('first cords written to a wire')
-            new_wire.line = canvas.create_line(x, y, x, y, width=5)
-            # print('line created')
-            onmove(screen, self.wiring)
+        # print('first_pin_wire')
+        # print('creating wire')
+        new_wire = Wire()
+        if self.t.ycor() > y:
+            # print('make wire as parent')
+            self.parents.append(new_wire)
+            new_wire.child = self
+        elif y > self.t.ycor():
+            # print('make wire as child')
+            self.children.append(new_wire)
+            new_wire.parent = self
         else:
-            if self.t.ycor() > y and new_wire.child is None and self.type != 1:
-                self.parents.append(new_wire)
-                #print('make wire as a parent')
-                new_wire.child = self
-                new_wire.update()
-                new_wire.ping()
-                self.update()
-                self.ping()
-                onmove(screen, None)
-            elif y > self.t.ycor() and new_wire.parent is None and self.type != 1:
-                self.children.append(new_wire)
-                #print('make wire as a child')
-                new_wire.parent = self
-                new_wire.update()
-                new_wire.ping()
-                self.update()
-                self.ping()
-                onmove(screen, None)
-            else:
-                new_wire.delete()
-            new_wire = None
+            # print("wire deleted")
+            new_wire.delete()
+            return -1
+        # print('wire created')
+        new_wire.line = canvas.create_line(x, y, x, y, width=5)
+        # print('line created')
+        mouse_mode(4)
+
+    def second_pin_wire(self, x, y):
+        global new_wire
+        # print("second pin")
+        if self.t.ycor() > y and new_wire.child is None:
+            self.parents.append(new_wire)
+            #print('make wire as a parent')
+            canvas.coords(new_wire.line, *canvas.coords(new_wire.line)[:2], x, y)
+            new_wire.child = self
+            new_wire.update()
+        elif y > self.t.ycor() and new_wire.parent is None:
+            self.children.append(new_wire)
+            #print('make wire as a child')
+            canvas.coords(new_wire.line, *canvas.coords(new_wire.line)[:2], x, y)
+            new_wire.parent = self
+            self.update()
+        else:
+            new_wire.delete()
+        new_wire = None
+        mouse_mode(3)
+"""
+    def wiring(self, x1, y1):
+        self.t.ondrag(None)
+        # print("wiring")
+        x0, y0 = canvas.coords(new_wire.line)[:2]
+        # print('got line's first point coords')
+        canvas.coords(new_wire.line, x0, y0, x1, y1)
+        # print('line modified')
+        self.t.ondrag(self.wiring)
+"""
+
+
+class InputBox(LogicGate):
+    def __init__(self):
+        super().__init__()
+        self.state = False
+
+    def update(self, xdummy=None, ydummy=None):
+        self.state = not self.state
+        self.shape_change()
+        self.ping()
+
+    def shape_change(self):
+        if self.state:
+            self.t.shape('Sprites/inp_box_on.gif')
+        else:
+            self.t.shape('Sprites/inp_box_off.gif')
+
+    def first_pin_wire(self, x, y):
+        global new_wire
+        # print('first_pin_wire')
+        # print('creating wire')
+        new_wire = Wire()
+        if y > self.t.ycor():
+            # print('make wire as child')
+            self.children.append(new_wire)
+            new_wire.parent = self
+        else:
+            # print("wire deleted")
+            new_wire.delete()
+            return -1
+        # print('wire created')
+        new_wire.line = canvas.create_line(x, y, x, y, width=5)
+        # print('line created')
+        mouse_mode(4)
+
+    def second_pin_wire(self, x, y):
+        global new_wire
+        # print("second pin")
+        if y > self.t.ycor() and new_wire.parent is None and self.type != 6:
+            self.children.append(new_wire)
+            # print('make wire as a child')
+            canvas.coords(new_wire.line, *canvas.coords(new_wire.line)[:2], x, y)
+            new_wire.parent = self
+            self.update()
+        else:
+            new_wire.delete()
+        new_wire = None
+        mouse_mode(3)
+
+
+class NotGate(LogicGate):
+    def update(self, xdummy=None, ydummy=None):
+        values = [i.state for i in self.parents]
+        if len(values) == 1 and values[0] is not None:
+            self.state = not values[0]
+        else:
+            self.state = None
+        self.shape_change()
+        self.ping()
+
+    def shape_change(self):
+        if self.state is None:
+            self.t.shape('Sprites/not_gate_none.gif')
+        elif self.state:
+            self.t.shape('Sprites/not_gate_on.gif')
+        else:
+            self.t.shape('Sprites/not_gate_off.gif')
+
+
+class OrGate(LogicGate):
+    def update(self, xdummy=None, ydummy=None):
+        values = [i.state for i in self.parents]
+        if len(values) > 1 and None not in values:
+            self.state = any(values)
+        else:
+            self.state = None
+        self.shape_change()
+        self.ping()
+
+    def shape_change(self):
+        if self.state is None:
+            self.t.shape('Sprites/or_gate_none.gif')
+        elif self.state:
+            self.t.shape('Sprites/or_gate_on.gif')
+        else:
+            self.t.shape('Sprites/or_gate_off.gif')
+
+
+class AndGate(LogicGate):
+    def update(self, xdummy=None, ydummy=None):
+        values = [i.state for i in self.parents]
+        if len(values) > 1 and None not in values:
+            self.state = all(values)
+        else:
+            self.state = None
+        self.shape_change()
+        self.ping()
+
+    def shape_change(self):
+        if self.state is None:
+            self.t.shape('Sprites/and_gate_none.gif')
+        elif self.state:
+            self.t.shape('Sprites/and_gate_on.gif')
+        else:
+            self.t.shape('Sprites/and_gate_off.gif')
+
+
+def do_xor(values, pointer=0, result=0):
+    if pointer < len(values):
+        return do_xor(values, pointer + 1, values[pointer] ^ result)
+    else:
+        return result
+
+
+class XorGate(LogicGate):
+    def update(self, xdummy=None, ydummy=None):
+        values = [i.state for i in self.parents]
+        if len(self.parents) == 2 and None not in values:
+            self.state = do_xor(values)
+        else:
+            self.state = None
+        self.shape_change()
+        self.ping()
+
+    def shape_change(self):
+        if self.state is None:
+            self.t.shape('Sprites/xor_gate_none.gif')
+        elif self.state:
+            self.t.shape('Sprites/xor_gate_on.gif')
+        else:
+            self.t.shape('Sprites/xor_gate_off.gif')
+
+
+class OutputBox(LogicGate):
+    def update(self, xdummy=None, ydummy=None):
+        values = [i.state for i in self.parents]
+        if len(self.parents) == 1:
+            self.state = values[0]
+        else:
+            self.state = None
+        self.shape_change()
+        self.ping()
+
+    def shape_change(self):
+        if self.state is None:
+            self.t.shape('Sprites/out_box_none.gif')
+        elif self.state:
+            self.t.shape('Sprites/out_box_on.gif')
+        else:
+            self.t.shape('Sprites/out_box_off.gif')
+
+    def first_pin_wire(self, x, y):
+        global new_wire
+        # print('first_pin_wire')
+
+        # print('creating wire')
+        new_wire = Wire()
+        if self.t.ycor() > y:
+            # print('make wire as parent')
+            self.parents.append(new_wire)
+            new_wire.child = self
+        else:
+            # print("wire deleted")
+            new_wire.delete()
+            return -1
+        # print('wire created')
+        new_wire.line = canvas.create_line(x, y, x, y, width=5)
+        # print('line created')
+        mouse_mode(4)
+
+    def second_pin_wire(self, x, y):
+        global new_wire
+        # print("second pin")
+        if self.t.ycor() > y and new_wire.child is None:
+            self.parents.append(new_wire)
+            # print('make wire as a parent')
+            canvas.coords(new_wire.line, *canvas.coords(new_wire.line)[:2], x, y)
+            new_wire.child = self
+            new_wire.update()
+        else:
+            new_wire.delete()
+        mouse_mode(3)
+        new_wire = None
 
 
 class Wire:
@@ -234,7 +336,6 @@ class Wire:
         self.parent = None
         self.child = None
         self.state = None
-        self.start = None
         self.line = None
         self.update()
 
@@ -247,7 +348,7 @@ class Wire:
         self.ping()
 
     def ping(self):
-        if self.child is not None and self.child.type != 1:
+        if self.child is not None:
             self.child.update()
 
     def change_shape(self):
@@ -260,27 +361,23 @@ class Wire:
         canvas.itemconfig(self.line, fill=color)
 
     def delete(self):
-        canvas.coords(self.line, 0, 0, 0, 0)
-        canvas.itemconfig(self.line, fill='gray')
+        print(self.line)
         try:
-            if self.parent is not None:
-                self.parent.children.remove(self)
-            if self.child is not None:
-                self.child.parents.remove(self)
-        except ValueError:
+            canvas.coords(self.line, 0, 0, 0, 0)
+            canvas.itemconfig(self.line, fill='gray')
+        except :
             pass
-        self.ping()
-        del self
-
-
-def onmove(self, fun, add=None):
-
-    if fun is None:
-        self.cv.unbind('<Motion>')
-    else:
-        def eventfun(event):
-            fun(self.cv.canvasx(event.x) / self.xscale, -self.cv.canvasy(event.y) / self.yscale)
-        self.cv.bind('<Motion>', eventfun, add)
+        try:
+            self.parent.children.remove(self)
+        except (ValueError, AttributeError):
+            pass
+        self.update()
+        try:
+            self.child.parents.remove(self)
+        except (ValueError, AttributeError):
+            pass
+        finally:
+            del self
 
 
 def create_object():
@@ -288,22 +385,22 @@ def create_object():
     new_object = True
 
     if choice == 'Input box':
-        LogicGate(1)
+        InputBox()
 
     elif choice == 'NOT gate':
-        LogicGate(2)
+        NotGate()
 
     elif choice == 'OR gate':
-        LogicGate(3)
+        OrGate()
 
     elif choice == 'AND gate':
-        LogicGate(4)
+        AndGate()
 
-    elif choice == 'XOR gate':
-        LogicGate(5)
+    elif choice == 'XOR gate ':
+        XorGate()
 
-    elif choice == 'Indicator':
-        LogicGate(6)
+    elif choice == 'Output box':
+        OutputBox()
 
     else:
         new_object = False
@@ -318,13 +415,10 @@ def mouse_mode(new_mode):
     for i in gates:
         i.t.onclick(None)
         i.t.ondrag(None)
-        i.t.onrelease(None)
-    onmove(screen, None)
 
     if mode == 0:
-
         for i in gates:
-            if i.type == 1:
+            if isinstance(i, InputBox):
                 i.t.onclick(i.update)
 
         canvas.master.config(cursor='arrow')
@@ -343,9 +437,18 @@ def mouse_mode(new_mode):
 
     elif mode == 3:
         for i in gates:
-            i.t.onclick(i.pin_wire)
+            i.t.onclick(i.first_pin_wire)
 
         canvas.master.config(cursor='Pencil')
+
+    elif mode == 4:
+        for i in gates:
+            i.t.onclick(i.second_pin_wire)
+
+        canvas.master.config(cursor='Pencil')
+
+    else:
+        mouse_mode(1)
 
 
 screen = turtle.Screen()
@@ -362,7 +465,7 @@ btn_del_mode = tkinter.Button(canvas.master, text='2', cursor='arrow', command=l
 btn_wire_mode = tkinter.Button(canvas.master, text='3', cursor='arrow', command=lambda: mouse_mode(3))
 btn_create = tkinter.Button(canvas.master, text="Create", cursor='arrow', command=create_object)
 menu = ttk.Combobox(canvas.master, cursor='arrow', values=['Input box', 'NOT gate', 'OR gate', 'AND gate', 'XOR gate',
-                                                           'Indicator'])
+                                                           'Output box'])
 
 canvas.create_window(225, 10, window=btn_std_mode)
 canvas.create_window(250, 10, window=btn_drag_mode)
@@ -372,26 +475,3 @@ canvas.create_window(175, 10, window=btn_create)
 canvas.create_window(75, 10, window=menu)
 
 screen.mainloop()
-
-"""
-mode 0:
-    onclick:
-        gate - change state if inp_box, else nothing
-    ondrag:
-        nothing
-mode 1:
-    onclick:
-        gate - if no wires connected, bind self ondrag to dragging, else nothing
-    ondrag:
-        gate - if binded exec dragging else nothing
-mode 2:
-    onclick:
-        gate - delete self, parental and childish wires
-    ondrag:
-        nothing
-mode 3:
-    onclick:
-        gate - bind self ondrag to wiring
-    ondrag:
-        gate - wiring
-"""
