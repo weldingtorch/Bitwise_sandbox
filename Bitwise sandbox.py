@@ -39,21 +39,18 @@ def execute_queue():
     lines_executed = 0
     while True:
         if len(queue):
-            queue[0]()
-            queue.pop(0)
+            queue.pop(0)()
             lines_executed += 1
             print(lines_executed)
-        sleep(0.1)
-
-
-Thread(target=execute_queue).start()
+        else:
+            sleep(0.25)
 
 
 class LogicGate:
     def __init__(self):
         global gates
 
-        self.t = turtle.Turtle()
+        self.t = turtle.Turtle(visible=False)
         self.t.penup()
         self.t.speed(-1)
         self.t.setpos(250, 250)
@@ -61,13 +58,20 @@ class LogicGate:
         self.parents = []
         self.children = []
         self.state = None
+        self.prev_values = []
+
         self.shape_change()
+        self.t.showturtle()
         gates.append(self)
 
         mouse_mode(mode)
 
     def update(self, xdummy=None, ydummy=None):
-        pass
+        values = [par.state for par in self.parents]
+        if self.prev_values != values:
+            self.prev_values = values
+            return values
+        return None
 
     def ping(self):
         for i in self.children:
@@ -183,7 +187,7 @@ class InputBox(LogicGate):
     def second_pin_wire(self, x, y):
         global new_wire
         # print("second pin")
-        if y > self.t.ycor() and new_wire.parent is None and self.type != 6:
+        if y > self.t.ycor() and new_wire.parent is None:
             self.children.append(new_wire)
             # print('make wire as a child')
             canvas.coords(new_wire.line, *canvas.coords(new_wire.line)[:2], x, y)
@@ -197,13 +201,15 @@ class InputBox(LogicGate):
 
 class NotGate(LogicGate):
     def update(self, xdummy=None, ydummy=None):
-        values = [i.state for i in self.parents]
-        if len(values) == 1 and values[0] is not None:
-            self.state = not values[0]
-        else:
-            self.state = None
-        self.shape_change()
-        self.ping()
+        values = super().update()
+
+        if values is not None:
+            if len(values) == 1 and values[0] is not None:
+                self.state = not values[0]
+            else:
+                self.state = None
+            self.shape_change()
+            self.ping()
 
     def shape_change(self):
         if self.state is None:
@@ -216,13 +222,15 @@ class NotGate(LogicGate):
 
 class OrGate(LogicGate):
     def update(self, xdummy=None, ydummy=None):
-        values = [i.state for i in self.parents]
-        if len(values) > 1 and None not in values:
-            self.state = any(values)
-        else:
-            self.state = None
-        self.shape_change()
-        self.ping()
+        values = super().update()
+
+        if values is not None:
+            if len(values) > 1 and None not in values:
+                self.state = any(values)
+            else:
+                self.state = None
+            self.shape_change()
+            self.ping()
 
     def shape_change(self):
         if self.state is None:
@@ -235,13 +243,15 @@ class OrGate(LogicGate):
 
 class AndGate(LogicGate):
     def update(self, xdummy=None, ydummy=None):
-        values = [i.state for i in self.parents]
-        if len(values) > 1 and None not in values:
-            self.state = all(values)
-        else:
-            self.state = None
-        self.shape_change()
-        self.ping()
+        values = super().update()
+
+        if values is not None:
+            if len(values) > 1 and None not in values:
+                self.state = all(values)
+            else:
+                self.state = None
+            self.shape_change()
+            self.ping()
 
     def shape_change(self):
         if self.state is None:
@@ -252,22 +262,21 @@ class AndGate(LogicGate):
             self.t.shape('Sprites/and_gate_off.gif')
 
 
-def do_xor(values, pointer=0, result=0):
-    if pointer < len(values):
-        return do_xor(values, pointer + 1, values[pointer] ^ result)
-    else:
-        return result
-
-
 class XorGate(LogicGate):
     def update(self, xdummy=None, ydummy=None):
-        values = [i.state for i in self.parents]
-        if len(self.parents) == 2 and None not in values:
-            self.state = do_xor(values)
-        else:
-            self.state = None
-        self.shape_change()
-        self.ping()
+        values = super().update()
+
+        if values is not None:
+            if len(values) >= 2 and None not in values:
+                result = 0
+                for value in values:
+                    result ^ value
+                
+                self.state = result
+            else:
+                self.state = None
+            self.shape_change()
+            self.ping()
 
     def shape_change(self):
         if self.state is None:
@@ -280,13 +289,15 @@ class XorGate(LogicGate):
 
 class OutputBox(LogicGate):
     def update(self, xdummy=None, ydummy=None):
-        values = [i.state for i in self.parents]
-        if len(self.parents) == 1:
-            self.state = values[0]
-        else:
-            self.state = None
-        self.shape_change()
-        self.ping()
+        values = super().update()
+
+        if values is not None:
+            if len(values) == 1:
+                self.state = values[0]
+            else:
+                self.state = None
+            self.shape_change()
+            self.ping()
 
     def shape_change(self):
         if self.state is None:
@@ -331,7 +342,6 @@ class OutputBox(LogicGate):
 
 
 class Wire:
-
     def __init__(self):
         self.parent = None
         self.child = None
@@ -361,19 +371,20 @@ class Wire:
         canvas.itemconfig(self.line, fill=color)
 
     def delete(self):
-        print(self.line)
         try:
             canvas.coords(self.line, 0, 0, 0, 0)
             canvas.itemconfig(self.line, fill='gray')
         except :
             pass
+
         try:
             self.parent.children.remove(self)
         except (ValueError, AttributeError):
             pass
-        self.update()
+
         try:
             self.child.parents.remove(self)
+            self.child.update()
         except (ValueError, AttributeError):
             pass
         finally:
@@ -459,19 +470,22 @@ screen.setworldcoordinates(0, 845, 1536, 0)
 
 canvas = screen.getcanvas()
 
-btn_std_mode = tkinter.Button(canvas.master, text='0', cursor='arrow', command=lambda: mouse_mode(0))
-btn_drag_mode = tkinter.Button(canvas.master, text='1', cursor='arrow', command=lambda: mouse_mode(1))
-btn_del_mode = tkinter.Button(canvas.master, text='2', cursor='arrow', command=lambda: mouse_mode(2))
-btn_wire_mode = tkinter.Button(canvas.master, text='3', cursor='arrow', command=lambda: mouse_mode(3))
+btn_tgl_mode = tkinter.Button(canvas.master, text='Toggle', cursor='arrow', command=lambda: mouse_mode(0))
+btn_mv_mode = tkinter.Button(canvas.master, text='Move', cursor='arrow', command=lambda: mouse_mode(1))
+btn_del_mode = tkinter.Button(canvas.master, text='Delete', cursor='arrow', command=lambda: mouse_mode(2))
+btn_wire_mode = tkinter.Button(canvas.master, text='Wire', cursor='arrow', command=lambda: mouse_mode(3))
 btn_create = tkinter.Button(canvas.master, text="Create", cursor='arrow', command=create_object)
 menu = ttk.Combobox(canvas.master, cursor='arrow', values=['Input box', 'NOT gate', 'OR gate', 'AND gate', 'XOR gate',
                                                            'Output box'])
 
-canvas.create_window(225, 10, window=btn_std_mode)
-canvas.create_window(250, 10, window=btn_drag_mode)
-canvas.create_window(275, 10, window=btn_del_mode)
-canvas.create_window(300, 10, window=btn_wire_mode)
-canvas.create_window(175, 10, window=btn_create)
-canvas.create_window(75, 10, window=menu)
+canvas.create_window(25, 10, window=btn_tgl_mode)
+canvas.create_window(75, 10, window=btn_mv_mode)
+canvas.create_window(125, 10, window=btn_del_mode)
+canvas.create_window(175, 10, window=btn_wire_mode)
+canvas.create_window(375, 10, window=btn_create)
+canvas.create_window(275, 10, window=menu)
 
+
+queue_handle = Thread(target=execute_queue, daemon=True)
+queue_handle.start()
 screen.mainloop()
